@@ -1,162 +1,196 @@
+// Program to parse natural language input into a structured object representing a Task
+// 
+// Here, we describe the interface that we will parse
+// 
+//
+// Some keywords that we need to able to parse:
+// AT: represents a time a which a task would occur
+// for example: "class at 2pm"
+//
+// FOR: represents a duration of time 
+// for example: "class for 1 hour"
+//
+// ON: represents a date
+// for example: "class on monday"
+//
+// Cal: represents a calendar
+// for example: "class on monday cal:work"
 
 
-
-var Task = {
-    name: "",
-    day: "",
-    time: "",
-    duration: "",
-    location: "",
-    calendar: "",
-    alerts: []
+// structure to define a task
+const Task = {
+    name: '',
+    time: '',
+    duration: '',
+    day: '',
+    days_from_today: '',
+    calendar: '',
 }
 
-function createTask(name, day, time, duration, location, calendar, alerts) {
-    var task = Object.create(Task);
-    task.name = name;
-    task.day = day;
-    task.time = time;
-    task.duration = duration;
-    task.location = location;
-    task.calendar = calendar;
-    task.alerts = alerts;
-    return task;
+// function to read input from the user
+function readInput() {
+    const [node, file, ...args] = process.argv;
+    console.log(`args: ${args}`);
+    return args.join(' ');
 }
 
-function split_on_whitespace(str) {
-    // convert to lower case
-    str = str.toLowerCase();
-    return str.split(/\s+/);
+
+
+// defining the Token structure
+
+const Token_Type = {
+    AT: 'AT',
+    FOR: 'FOR',
+    ON: 'ON',
+    CAL: 'CAL',
+    WORD: 'WORD',
+    DATE: 'DATE',
+    TIME: 'TIME',
+    DURATION: 'DURATION',
 }
 
-/**
- * iterate through the array
- * if the word matches a pattern,
- * create a token and add it to the tokens array
- * return the tokens array
- * @function tokenize
- * @param {Array<string>} str
- **/
-function tokenize(str) {
+const Token = {
+    type: Token_Type,
+    value: '',
+}
 
-    var tokens = [];
-    while (str.length > 0) {
-        var word = str.shift();
-        if (patterns.time.test(word)) {
-            tokens.push({ type: "time", value: word });
-        } else if (patterns.duration.test(word)) {
-            tokens.push({ type: "duration", value: word });
-        } else if (patterns.day.test(word)) {
-            tokens.push({ type: "day", value: word });
-        } else if (patterns.at.test(word)) {
-            tokens.push({ type: "at", value: word });
-        } else if (patterns.from.test(word)) {
-            tokens.push({ type: "from", value: word });
-        } else if (patterns.to.test(word)) {
-            tokens.push({ type: "to", value: word });
-        } else if (patterns.calendar.test(word)) {
-            // keep only the calendar name in the value property 
-            var match = word.match(patterns.calendar);
-            tokens.push({ type: "calendar", value: match[1] });
-            // if not match, default value is personal 
-            if (tokens.length === 0) {
-                tokens.push({ type: "calendar", value: "personal" });
+
+// function to parse input into Tokens
+function parse_input(input) {
+    // convert to lowercase 
+    input = input.toLowerCase();
+
+    // split on spaces
+    const seq = input.split(' ');
+
+    // create a list of tokens
+    const token_list = [];
+
+    // if length of token_list is 0, then the token is a word
+    // TODO: this is a hack, need to fix this later
+    // add the first word in seq to token_list
+    token_list.push({ type: Token_Type.WORD, value: seq.shift() });
+
+    while (seq.length > 0) {
+        const token = seq.shift();
+        if (token.startsWith('cal:')) {
+            token_list.push({ type: Token_Type.CAL, value: token.split(':')[1] });
+        }
+        else if (token === 'at') {
+            token_list.push({ type: Token_Type.AT, value: token });
+        } else if (token === 'for') {
+            token_list.push({ type: Token_Type.FOR, value: token });
+        } else if (token === 'on') {
+            token_list.push({ type: Token_Type.ON, value: token });
+        } else {
+
+            // if the previous word is ON, then the word represents a date
+            // the date can be expressed as a day of the week or <month><day>
+            // for example: "monday" or "january1"
+            // in the case of a day of the week, find the closest day of the week to today (including today)
+            // if the day of the week is today, then the task is today
+            if (token_list[token_list.length - 1].type === Token_Type.ON) {
+                const day = token;
+                const date = process_day(day);
+                token_list.push({ type: Token_Type.DATE, value: date });
             }
-        } else {
-            tokens.push({ type: "word", value: word });
+
+            // if the previous token is AT, then the current token represents a time
+            // the time can be expressed as <hour>:<minute><am/pm>
+            // for example: "2:30pm"
+            else if (token_list[token_list.length - 1].type === Token_Type.AT) {
+                const time = token;
+                token_list.push({ type: Token_Type.TIME, value: time });
+            }
+
+            // if the previous token is FOR, then the current token represents a duration
+            // the duration can be expressed as a <number><hour/minute>
+            // for example: "1hour" or "30mins"
+            else if (token_list[token_list.length - 1].type === Token_Type.FOR) {
+                const duration = process_duration(token);
+                token_list.push({ type: Token_Type.DURATION, value: duration });
+            }
+
+            else {
+                // if none of the above match, then the token is a word
+                token_list.push({ type: Token_Type.WORD, value: token });
+
+            }
         }
     }
-    return tokens;
-
-
+    return token_list;
 }
 
-const patterns = {
-    // time: any number with am or pm after it 
-    time: /(\d+)(am|pm)/,
-    // duration: any number followed by "hour" or "hours"
-    duration: /(\d+)(hour|hours)/,
-    // day: any day of the week
-    day: /(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/,
-    // at
-    at: /at/,
-    // from 
-    from: /from/,
-    // to 
-    to: /to/,
-    // calendar: cal:calendar but keep only the calendar name
-    calendar: /cal:(\w+)/
-};
 
-function parse(str) {
-    var words = split_on_whitespace(str);
-    var tokens = tokenize(words);
+function process_day(day) {
+    // given input like "monday", "tuesday", etc
+    // or "march1", "april2", etc
+    // return the date 
 
-    return tokens;
-}
+    // get the current date
+    const today = new Date();
 
-/**
- * @function process tokens to create task
- * @param {Array<Object>} tokens
- *
- * @returns {Task}
- **/
-function process(tokens) {
-    var task = createTask("", "", "", "", "", "", []);
-    var i = 0;
-    while (i < tokens.length) {
-        var token = tokens[i];
-        if (token.type === "time") {
-            task.time = token.value;
-        } else if (token.type === "duration") {
-            task.duration = token.value;
-        } else if (token.type === "day") {
-            task.day = token.value;
-        } else if (token.type === "at") {
-            task.time = tokens[i + 1].value;
-            i++;
-        } else if (token.type === "from") {
-            task.time = tokens[i + 1].value;
-            task.time = tokens[i + 3].value;
-            i += 3;
-        } else if (token.type === "to") {
-            task.time = tokens[i - 1].value;
-            task.time = tokens[i + 1].value;
-            i++;
-        } else if (token.type === "calendar") {
-            task.calendar = token.value;
-        } else {
-            task.name += token.value + " ";
-        }
-        i++;
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    // if the input is a day of the week
+    // find the closest day of the week to today (including today)
+    // if the day of the week is today, then the task is today
+    if (days.includes(day)) {
+        const day_index = days.indexOf(day);
+        const today_index = today.getDay();
+        const days_from_today = (day_index - today_index + 7) % 7;
+        // form the date
+        const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + days_from_today);
+        return date;
     }
-    return task;
-}
 
-function create_task() {
-    const str_1 = "meeting at 1pm on Monday for 2hours. cal:personal";
-    const str_2 = "2hour meeting at 1pm on Monday";
-    const str_3 = "meeting from 1pm to 3pm on Tuesday at the office";
-
-    console.log(str_1);
-    console.log(parse(str_1));
-    console.log(process(parse(str_1)));
-    console.log("\n");
-    console.log("\n");
-
-    console.log(str_2);
-    console.log(parse(str_2));
-    console.log(process(parse(str_2)));
-    console.log("\n");
-    console.log("\n");
-    console.log(str_3);
-    console.log(parse(str_3));
-    console.log(process(parse(str_3)));
-    console.log("\n");
-    console.log("\n");
-
-
+    // if the input is a date
+    // return the date
+    const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'november', 'december'];
+    const month_short_form = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'nov', 'dec'];
+    const month = day.match(/([a-zA-Z]+)/)[0];
+    const day_number = day.match(/([0-9]+)/)[0];
+    const month_index = months.indexOf(month) || month_short_form.indexOf(month);
+    const year = today.getFullYear();
+    return new Date(year, month_index, day_number);
 
 }
 
-create_task();
+
+function process_duration(duration) {
+    // duration can be passed in the form of <number><hour/minute>
+    // for example: "1hour" or "30mins"
+    // return the duration in minutes
+
+    const hour_units = ['hr', 'hour', 'hours', 'hrs'];
+    const minute_units = ['min', 'minute', 'minutes', 'mins'];
+
+    const number = duration.match(/([0-9]+)/)[0];
+    const unit = duration.match(/([a-zA-Z]+)/)[0];
+
+    if (hour_units.includes(unit)) {
+        return number * 60;
+    }
+    if (minute_units.includes(unit)) {
+        return number;
+    }
+
+    return 0;
+}
+
+function test_parse_input() {
+    var input = "class at 2pm for 1hr on monday cal:work";
+    var tokens = parse_input(input);
+    console.log(`input: ${input}`);
+    console.log(`tokens: ${JSON.stringify(tokens)}`);
+    console.log();
+
+
+    input = "meeting on march3 at 3pm for 30mins cal:work";
+    tokens = parse_input(input);
+    console.log(`input: ${input}`);
+    console.log(`tokens: ${JSON.stringify(tokens)}`);
+    console.log();
+
+}
+
