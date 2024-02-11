@@ -178,8 +178,42 @@ function process_duration(duration) {
     return 0;
 }
 
+// function to parse tokens into a Task
+function parse_tokens(tokens) {
+    const task = Object.create(Task);
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        if (token.type === Token_Type.WORD) {
+            task.name += token.value + ' ';
+        }
+        if (token.type === Token_Type.DATE) {
+            task.day = token.value;
+        }
+        if (token.type === Token_Type.TIME) {
+            task.time = token.value;
+        }
+        if (token.type === Token_Type.DURATION) {
+            task.duration = token.value;
+        }
+        if (token.type === Token_Type.CAL) {
+            task.calendar = token.value;
+        }
+    }
+    // if no cal then default to personal
+    if (task.calendar === '') {
+        task.calendar = 'personal';
+    }
+
+    // if no day then default to today
+    if (task.day === '') {
+        task.day = new Date();
+    }
+    return task;
+}
+
+
 function test_parse_input() {
-    var input = "class at 2pm for 1hr on monday cal:work";
+    var input = "CS561: HW2 at 2pm for 1hr on monday cal:work";
     var tokens = parse_input(input);
     console.log(`input: ${input}`);
     console.log(`tokens: ${JSON.stringify(tokens)}`);
@@ -192,5 +226,29 @@ function test_parse_input() {
     console.log(`tokens: ${JSON.stringify(tokens)}`);
     console.log();
 
+    input = "meeting on march3 at 3pm for 30mins";
+    tokens = parse_input(input);
+    console.log(`input: ${input}`);
+    console.log(`tokens: ${JSON.stringify(tokens)}`);
+    console.log();
 }
 
+function test_generate_task() {
+    var input = "CS561: HW2 at 2pm for 1hr on monday cal:work";
+    var tokens = parse_input(input);
+    var task = parse_tokens(tokens);
+    console.log(`input: ${input}`);
+    console.log(`task: ${JSON.stringify(task)}`);
+    console.log();
+
+    input = "meeting on march3 at 3pm for 30mins";
+    tokens = parse_input(input);
+    task = parse_tokens(tokens);
+    console.log(`input: ${input}`);
+    console.log(`task: ${JSON.stringify(task)}`);
+    console.log();
+
+}
+
+// test_parse_input();
+test_generate_task();
